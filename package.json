@@ -1,0 +1,23 @@
+{
+  "name": "indexeddb_plugin",
+  "version": "1.0.0",
+  "description": "IndexedDB plugin for jQuery.",
+  "main": "src/indexedDB_Plugin.js",
+  "dependencies": {
+    "minify": "^2.0.13"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scorpionsk5/IndexedDB_Plugin.git"
+  },
+  "author": "Shashi Kumar D",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/scorpionsk5/IndexedDB_Plugin/issues"
+  },
+  "homepage": "https://github.com/scorpionsk5/IndexedDB_Plugin#readme"
+}

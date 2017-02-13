@@ -1,0 +1,1 @@
+﻿/// <reference path="src/lib/jquery-2.2.2.min.js" />
