@@ -15,7 +15,7 @@
             dt2 = new Date(date2);
             return Math.floor((Date.UTC(dt2.getFullYear(), dt2.getMonth(), dt2.getDate()) - Date.UTC(dt1.getFullYear(), dt1.getMonth(), dt1.getDate())) / (1000 * 60 * 60 * 24));
         },
-        indexedDBManagerInstance = null,
+        indexedDBManagerInstancePool = {},
 
         asyncLoop = function (handler, timeOut) {
             var loop = window.setInterval(function () {
@@ -25,11 +25,23 @@
             }, timeOut || 10);
         },
 
+        parsePath = function (name) {
+            var pathArray = name.split('/'),
+                pathDetails = {};
+
+            pathArray - 1 >= 0 && (pathDetails.key = pathArray[pathArray.length - 1]);
+            pathArray - 2 >= 0 && (pathDetails.recordName = pathArray[pathArray.length - 2]);
+            pathArray - 3 >= 0 && (pathDetails.tableName = pathArray[pathArray.length - 3]);
+            pathArray - 4 >= 0 && (pathDetails.dbName = pathArray[pathArray.length - 4]);
+
+            return pathDetails;
+        },
+
     /* IndexedDB manager class */
         IndexedDBManager = function (options) {
             var me = this,
                 readyState = false;
-            me.options = $.extend(true, {}, getDefaultConfig(), options || {});
+            me.options = options;
             me.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
             me.IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction || window.msIDBTransaction;
             me.IDBKeyRange = window.IDBKeyRange || window.webkitIDBKeyRange || window.msIDBKeyRange;
@@ -196,11 +208,16 @@
     /* Create jQuery plugin. */
     $.indexedDB = function (name, value, options) {
         var data = {},
-            def = $.Deferred();
+            def = $.Deferred(),
+            indexedDBManagerInstance = null;
 
-        if (!indexedDBManagerInstance) {
-            indexedDBManagerInstance = new IndexedDBManager(options);
+        me.options = $.extend(true, {}, getDefaultConfig(), options || {}, parsePath(name));
+
+        if (!indexedDBManagerInstancePool[name]) {
+            indexedDBManagerInstancePool[name] = new IndexedDBManager(options);
         };
+
+        indexedDBManagerInstance = indexedDBManagerInstancePool[name];
 
         asyncLoop(function () {
             try {
@@ -227,9 +244,17 @@
     };
 
     $.deleteIndexedDB = function (dbName) {
-        if (!indexedDBManagerInstance) {
-            indexedDBManagerInstance = new IndexedDBManager(options);
+        var data = {},
+            def = $.Deferred(),
+            indexedDBManagerInstance = null;
+
+        me.options = $.extend(true, {}, getDefaultConfig(), options || {}, parsePath(name));
+
+        if (!indexedDBManagerInstancePool[name]) {
+            indexedDBManagerInstancePool[name] = new IndexedDBManager(options);
         };
+
+        indexedDBManagerInstance = indexedDBManagerInstancePool[name];
 
         asyncLoop(function () {
             try {
