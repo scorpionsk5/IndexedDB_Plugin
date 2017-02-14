@@ -75,7 +75,6 @@
         request.onupgradeneeded = function (e) {
             var db = e.target.result;
             db.createObjectStore(me.options.tableName, { keyPath: me.options.primaryKeyField });
-            readyState = true;
         };
 
         me.isIndexedDBManagerReady = function () {
@@ -92,8 +91,7 @@
             request = objectStore.get(recordPath.recordName || me.options.recordName);
 
         request.onerror = function (e) {
-            me.options.messageHandler("Unable to retrieve daa from database! Error: " + e.target.errorCode);
-            def.reject(e.target.errorCode);
+            def.reject(e);
         };
 
         request.onsuccess = function (e) {
@@ -138,12 +136,11 @@
             .put($.extend(true, {}, getBaseModel.call(me), res, data, parsedName.key ? {} : obj));
 
             request.onsuccess = function (e) {
-                def.resolve("Record successfully added.");
+                def.resolve(e);
             };
 
             request.onerror = function (e) {
-                me.options.messageHandler("Unable to add data\r\nRecord aready exist in your database! ");
-                def.reject(e.target.errorCode);
+                def.reject(e);
             }
         });
 
@@ -182,25 +179,18 @@
     IndexedDBManager.prototype.deleteDB = function () {
         var me = this,
             def = $.Deferred(),
-            deleteRequest,
-            msg = "";
+            deleteRequest;
 
         me.db.close();
         deleteRequest = me.indexedDB.deleteDatabase(me.options.dbName);
-        deleteRequest.onsuccess = function () {
-            msg = "Deleted database successfully";
-            me.options.messageHandler(msg);
-            def.resolve(msg);
+        deleteRequest.onsuccess = function (e) {
+            def.resolve(e);
         };
-        deleteRequest.onerror = function () {
-            msg = "Couldn't delete database";
-            me.options.messageHandler(msg);
-            def.reject(msg);
+        deleteRequest.onerror = function (e) {
+            def.reject(e);
         };
-        deleteRequest.onblocked = function () {
-            msg = "Couldn't delete database due to the operation being blocked";
-            me.options.messageHandler(msg);
-            def.reject(msg);
+        deleteRequest.onblocked = function (e) {
+            def.reject(e);
         };
 
         return def.promise();
@@ -268,7 +258,17 @@
 
 
         if (!indexedDBManagerInstancePool[tableId]) {
-            (window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB).deleteDatabase(parsePath(baseOptions.tablePath).dbName);
+            var deleteRequest = (window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB).deleteDatabase(parsePath(baseOptions.tablePath).dbName);
+
+            deleteRequest.onsuccess = function (e) {
+                def.resolve(e);
+            };
+            deleteRequest.onerror = function (e) {
+                def.reject(e);
+            };
+            deleteRequest.onblocked = function (e) {
+                def.reject(e);
+            };
         };
 
         indexedDBManagerInstance = indexedDBManagerInstancePool[tableId];
@@ -276,8 +276,11 @@
         asyncLoop(function () {
             try {
                 if (indexedDBManagerInstance.isIndexedDBManagerReady()) {
-                    indexedDBManagerInstance.deleteDB().done(function () {
+                    indexedDBManagerInstance.deleteDB().done(function (e) {
                         delete indexedDBManagerInstancePool[tableId];
+                        def.resolve(e);
+                    }).fail(function (e) {
+                        def.reject(e);
                     });
                 };
 
@@ -287,6 +290,8 @@
                 return false;
             }
         });
+
+        return def.promise();
     };
 
 })(jQuery);
