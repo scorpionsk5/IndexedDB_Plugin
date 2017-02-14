@@ -1,11 +1,9 @@
 ﻿(function ($) {
     var getDefaultConfig = function () {
         return {
-            dbName: 'NewDataBase',
-            tableName: 'DataTable',
             primaryKeyField: 'Record_ID',
             messageHandler: function (msg) {
-                alert(msg);
+                console.log(msg);
             },
             recordName: 'Data'
         };
@@ -22,59 +20,67 @@
                 if (handler() === false) {
                     clearInterval(loop);
                 };
-            }, timeOut || 10);
+            }, timeOut || 50);
         },
 
-        parsePath = function (name) {
-            var pathArray = name.split('/'),
+        parsePath = function (tablePath) {
+            var pathArray = tablePath.split('/'),
                 pathDetails = {};
 
-            pathArray - 1 >= 0 && (pathDetails.key = pathArray[pathArray.length - 1]);
-            pathArray - 2 >= 0 && (pathDetails.recordName = pathArray[pathArray.length - 2]);
-            pathArray - 3 >= 0 && (pathDetails.tableName = pathArray[pathArray.length - 3]);
-            pathArray - 4 >= 0 && (pathDetails.dbName = pathArray[pathArray.length - 4]);
+            pathArray.length - 1 >= 0 && (pathDetails.tableName = pathArray[pathArray.length - 1]);
+            pathArray.length - 2 >= 0 && (pathDetails.dbName = pathArray[pathArray.length - 2]);
 
             return pathDetails;
         },
 
-    /* IndexedDB manager class */
-        IndexedDBManager = function (options) {
-            var me = this,
-                readyState = false;
-            me.options = options;
-            me.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
-            me.IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction || window.msIDBTransaction;
-            me.IDBKeyRange = window.IDBKeyRange || window.webkitIDBKeyRange || window.msIDBKeyRange;
-            if (!me.indexedDB) {
-                me.options.messageHandler("Your browser doesn't support a stable version of IndexedDB.");
-            };
-            var request = me.indexedDB.open(me.options.dbName);
-            request.onerror = function (e) {
-                me.options.messageHandler(e.target.errorCode);
-            };
-            request.onsuccess = function (e) {
-                me.db = event.target.result;
-                me.removeExpiredRecords();
-                readyState = true;
-            };
-            request.onupgradeneeded = function (e) {
-                var db = e.target.result;
-                db.createObjectStore(me.options.tableName, { keyPath: me.options.primaryKeyField });
-                readyState = true;
-            };
+        parseName = function (name) {
+            var pathArray = name.split('/'),
+                pathDetails = {};
 
-            me.isIndexedDBManagerReady = function () {
-                return readyState;
-            };
+            pathArray.length - 1 >= 0 && (pathDetails.recordName = pathArray[pathArray.length - 1]);
+            pathArray.length - 2 >= 0 && (pathDetails.recordName = pathArray[pathArray.length - 2], pathDetails.key = pathArray[pathArray.length - 1]);
+
+            return pathDetails;
+        },
+
+        getBaseModel = function () {
+            var me = this;
+            return {
+                Record_ID: me.options.recordName,
+                validFor: 0,    // in days. set 0 for disable auto expire.
+                createdDate: Date()
+            }
         };
 
-    IndexedDBManager.prototype._getBaseModel = function () {
-        var me = this;
-        return {
-            Record_ID: me.options.recordName,
-            validFor: 0,    // in days. set 0 for disable auto expire.
-            createdDate: Date()
-        }
+    /* IndexedDB manager class */
+    IndexedDBManager = function (options) {
+        var me = this,
+            readyState = false;
+        me.options = options;
+        me.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
+        me.IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction || window.msIDBTransaction;
+        me.IDBKeyRange = window.IDBKeyRange || window.webkitIDBKeyRange || window.msIDBKeyRange;
+        if (!me.indexedDB) {
+            me.options.messageHandler("Your browser doesn't support a stable version of IndexedDB.");
+        };
+        var request = me.indexedDB.open(me.options.dbName);
+        request.onerror = function (e) {
+            me.options.messageHandler(e.target.errorCode);
+        };
+        request.onsuccess = function (e) {
+            me.db = event.target.result;
+            me.removeExpiredRecords();
+            readyState = true;
+        };
+        request.onupgradeneeded = function (e) {
+            var db = e.target.result;
+            db.createObjectStore(me.options.tableName, { keyPath: me.options.primaryKeyField });
+            readyState = true;
+        };
+
+        me.isIndexedDBManagerReady = function () {
+            return readyState;
+        };
     };
 
     IndexedDBManager.prototype.get = function (key) {
@@ -82,7 +88,8 @@
             def = $.Deferred(),
             transaction = me.db.transaction([me.options.tableName]),
             objectStore = transaction.objectStore(me.options.tableName),
-            request = objectStore.get(me.options.recordName);
+            recordPath = parseName(key),
+            request = objectStore.get(recordPath.recordName || me.options.recordName);
 
         request.onerror = function (e) {
             me.options.messageHandler("Unable to retrieve daa from database! Error: " + e.target.errorCode);
@@ -90,7 +97,7 @@
         };
 
         request.onsuccess = function (e) {
-            def.resolve(request.result[key]);
+            def.resolve(request.result ? (recordPath.key ? request.result[recordPath.key] : request.result) : {});
         };
 
         return def.promise();
@@ -117,21 +124,28 @@
         return def.promise();
     };
 
-    IndexedDBManager.prototype.add = function (data) {
+    IndexedDBManager.prototype.add = function (name, data) {
         var me = this,
-            def = $.Deferred(),
+            parsedName = parseName(name)
+        def = $.Deferred();
+
+        me.get(parsedName.recordName).done(function (res) {
+            var obj = {},
+                request;
+            obj[me.options.primaryKeyField] = parsedName.recordName;
             request = me.db.transaction([me.options.tableName], "readwrite")
-                .objectStore(me.options.tableName)
-                .put($.extend(true, {}, me._getBaseModel(), data));
+            .objectStore(me.options.tableName)
+            .put($.extend(true, {}, getBaseModel.call(me), res, data, parsedName.key ? {} : obj));
 
-        request.onsuccess = function (e) {
-            def.resolve("Record successfully added.");
-        };
+            request.onsuccess = function (e) {
+                def.resolve("Record successfully added.");
+            };
 
-        request.onerror = function (e) {
-            me.options.messageHandler("Unable to add data\r\nRecord aready exist in your database! ");
-            def.reject(e.target.errorCode);
-        }
+            request.onerror = function (e) {
+                me.options.messageHandler("Unable to add data\r\nRecord aready exist in your database! ");
+                def.reject(e.target.errorCode);
+            }
+        });
 
         return def.promise();
     };
@@ -209,26 +223,28 @@
     $.indexedDB = function (name, value, options) {
         var data = {},
             def = $.Deferred(),
-            indexedDBManagerInstance = null;
+            baseOptions = $.extend(true, {}, { tablePath: 'NewDataBase/DataTable' }, options || {}),
+            indexedDBManagerInstance = null,
+            tableId = baseOptions.tablePath.replace('/', '_'),
+            namePath = parseName(name);
 
-        me.options = $.extend(true, {}, getDefaultConfig(), options || {}, parsePath(name));
 
-        if (!indexedDBManagerInstancePool[name]) {
-            indexedDBManagerInstancePool[name] = new IndexedDBManager(options);
+        if (!indexedDBManagerInstancePool[tableId]) {
+            indexedDBManagerInstancePool[tableId] = new IndexedDBManager($.extend(true, {}, baseOptions, getDefaultConfig(), parsePath(baseOptions.tablePath), namePath));
         };
 
-        indexedDBManagerInstance = indexedDBManagerInstancePool[name];
+        indexedDBManagerInstance = indexedDBManagerInstancePool[tableId];
 
         asyncLoop(function () {
             try {
                 if (indexedDBManagerInstance.isIndexedDBManagerReady()) {
                     if (value) {
-                        data[name] = value;
-                        indexedDBManagerInstance.add(data);
+                        namePath.key ? (data[namePath.key] = value) : (data = value);
+                        indexedDBManagerInstance.add(name, data);
                     }
                     else {
                         indexedDBManagerInstance.get(name).done(function (result) {
-                            def.resolve();
+                            def.resolve(result);
                         });
                     };
 
@@ -246,20 +262,23 @@
     $.deleteIndexedDB = function (dbName) {
         var data = {},
             def = $.Deferred(),
-            indexedDBManagerInstance = null;
+            baseOptions = $.extend(true, {}, { tablePath: dbName || 'NewDataBase/DataTable' }),
+            indexedDBManagerInstance = null,
+            tableId = baseOptions.tablePath.replace('/', '_');
 
-        me.options = $.extend(true, {}, getDefaultConfig(), options || {}, parsePath(name));
 
-        if (!indexedDBManagerInstancePool[name]) {
-            indexedDBManagerInstancePool[name] = new IndexedDBManager(options);
+        if (!indexedDBManagerInstancePool[tableId]) {
+            (window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB).deleteDatabase(parsePath(baseOptions.tablePath).dbName);
         };
 
-        indexedDBManagerInstance = indexedDBManagerInstancePool[name];
+        indexedDBManagerInstance = indexedDBManagerInstancePool[tableId];
 
         asyncLoop(function () {
             try {
                 if (indexedDBManagerInstance.isIndexedDBManagerReady()) {
-                    indexedDBManagerInstance.deleteDB();
+                    indexedDBManagerInstance.deleteDB().done(function () {
+                        delete indexedDBManagerInstancePool[tableId];
+                    });
                 };
 
                 return false;
