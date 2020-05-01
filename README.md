@@ -1,2 +1,2 @@
 # IndexedDB_Plugin
-Indexed DB Plugin
+jQuery plugin to manage data of browser's IndexedDB.
